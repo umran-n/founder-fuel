@@ -21,6 +21,8 @@ const defaultCodeGenArgs: CodeGenArgs = {
     agentMode: 'deterministic',
 };
 
+// Type-safe blank template constant
+const BLANK_TEMPLATE = { name: 'blank', files: [] } as const;
 
 /**
  * CodingAgentController to handle all code generation related endpoints
@@ -112,22 +114,22 @@ export class CodingAgentController extends BaseController {
             const websocketUrl = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}/api/agent/${agentId}/ws`;
             const httpStatusUrl = `${url.origin}/api/agent/${agentId}`;
         
-            // Handle null templateDetails - generate from scratch
-            const templateInfo = templateDetails ? {
+            // Create type-safe template info for response - use actual template or blank fallback
+            const responseTemplateInfo = templateDetails ? {
                 name: templateDetails.name,
                 files: templateDetails.files,
-            } : {
-                name: 'blank',
-                files: [],
-            };
+            } : BLANK_TEMPLATE;
 
             writer.write({
                 message: 'Code generation started',
                 agentId: agentId,
                 websocketUrl,
                 httpStatusUrl,
-                template: templateInfo
+                template: responseTemplateInfo
             });
+
+            // Create type-safe template info for agent initialization - always provide non-null value
+            const agentTemplateDetails = templateDetails ?? BLANK_TEMPLATE;
 
             const agentPromise = agentInstance.initialize({
                 query,
@@ -136,15 +138,27 @@ export class CodingAgentController extends BaseController {
                 hostname,
                 inferenceContext,
                 onBlueprintChunk: (chunk: string) => {
-                    writer.write({chunk});
+                    writer.write({ chunk });
                 },
-                templateInfo: { templateDetails, selection },
+                templateInfo: {
+                    templateDetails: agentTemplateDetails,
+                    selection
+                },
                 sandboxSessionId
             }, body.agentMode || defaultCodeGenArgs.agentMode) as Promise<CodeGenState>;
+
             agentPromise.then(async (_state: CodeGenState) => {
                 writer.write("terminate");
                 writer.close();
                 this.logger.info(`Agent ${agentId} terminated successfully`);
+            }).catch((error) => {
+                this.logger.error(`Agent ${agentId} initialization failed:`, error);
+                writer.write({
+                    type: 'error',
+                    message: `Agent initialization failed: ${error instanceof Error ? error.message : String(error)}`
+                });
+                writer.write("terminate");
+                writer.close();
             });
 
             this.logger.info(`Agent ${agentId} init launched successfully`);
