@@ -4,6 +4,7 @@ import { logger } from '@/utils/logger';
 import { getFileType } from '@/utils/string';
 import { getPreviewUrl } from '@/lib/utils';
 import { generateId } from '@/utils/id-generator';
+import * as monaco from 'monaco-editor';
 import {
     setFileGenerating,
     appendFileChunk,
@@ -276,6 +277,34 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
                     'completed',
                     message.file.fileContents
                 ));
+                
+                // Register file with Monaco for TypeScript compilation
+                try {
+                    const uri = monaco.Uri.parse(`file:///${message.file.filePath}`);
+                    let model = monaco.editor.getModel(uri);
+                    
+                    if (model) {
+                        // Update existing model
+                        model.setValue(message.file.fileContents);
+                    } else {
+                        // Create new model
+                        const language = getFileType(message.file.filePath) || 'plaintext';
+                        model = monaco.editor.createModel(message.file.fileContents, language, uri);
+                    }
+                    
+                    // Add as extra lib for TypeScript intellisense
+                    if (message.file.filePath.endsWith('.ts') || message.file.filePath.endsWith('.tsx')) {
+                        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+                            message.file.fileContents,
+                            `file:///${message.file.filePath}`
+                        );
+                    }
+                    
+                    logger.debug('Registered file with Monaco:', message.file.filePath);
+                } catch (error) {
+                    logger.error('Error registering file with Monaco:', error);
+                }
+                
                 break;
             }
 
@@ -288,6 +317,31 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
                     'completed',
                     message.file.fileContents
                 ));
+                
+                // Register file with Monaco for TypeScript compilation
+                try {
+                    const uri = monaco.Uri.parse(`file:///${message.file.filePath}`);
+                    let model = monaco.editor.getModel(uri);
+                    
+                    if (model) {
+                        model.setValue(message.file.fileContents);
+                    } else {
+                        const language = getFileType(message.file.filePath) || 'plaintext';
+                        model = monaco.editor.createModel(message.file.fileContents, language, uri);
+                    }
+                    
+                    if (message.file.filePath.endsWith('.ts') || message.file.filePath.endsWith('.tsx')) {
+                        monaco.languages.typescript.typescriptDefaults.addExtraLib(
+                            message.file.fileContents,
+                            `file:///${message.file.filePath}`
+                        );
+                    }
+                    
+                    logger.debug('Registered regenerated file with Monaco:', message.file.filePath);
+                } catch (error) {
+                    logger.error('Error registering regenerated file with Monaco:', error);
+                }
+                
                 break;
             }
 
