@@ -29,7 +29,7 @@ const BLANK_TEMPLATE = {
         usage: 'Start with a blank canvas'
     },
     files: [],
-    fileTree: { type: 'directory' as const, name: 'root', children: [] },
+    fileTree: { type: 'directory' as const, name: 'root', path: '/', children: [] },
     deps: {},
     dontTouchFiles: [],
     redactedFiles: []
