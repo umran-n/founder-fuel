@@ -170,15 +170,6 @@ function optimizeTextContent(content: string): string {
     // This preserves intentional spacing while removing truly excessive gaps
     content = content.replace(/\n\s*\n\s*\n\s*\n+/g, '\n\n\n');
 
-    // // Convert 4-space indentation to 2-space for non-Python/YAML content
-    // content = content.replace(/^( {4})+/gm, (match) =>
-    // 	'  '.repeat(match.length / 4),
-    // );
-
-    // // Convert 8-space indentation to 2-space
-    // content = content.replace(/^( {8})+/gm, (match) =>
-    // 	'  '.repeat(match.length / 8),
-    // );
     // 4. Remove leading/trailing whitespace from the entire content
     // (but preserve internal structure)
     content = content.trim();
@@ -226,20 +217,6 @@ function isValidApiKey(apiKey: string): boolean {
 
 async function getApiKey(provider: string, env: Env, _userId: string): Promise<string> {
     console.log("Getting API key for provider: ", provider);
-    // try {
-    //     const secretsService = new SecretsService(env);
-    //     const userProviderKeys = await secretsService.getUserBYOKKeysMap(userId);
-    //     // First check if user has a custom API key for this provider
-    //     if (userProviderKeys && provider in userProviderKeys) {
-    //         const userKey = userProviderKeys.get(provider);
-    //         if (userKey && isValidApiKey(userKey)) {
-    //             console.log("Found user API key for provider: ", provider, userKey);
-    //             return userKey;
-    //         }
-    //     }
-    // } catch (error) {
-    //     console.error("Error getting API key for provider: ", provider, error);
-    // }
     // Fallback to environment variables
     const providerKeyString = provider.toUpperCase().replaceAll('-', '_');
     const envKey = `${providerKeyString}_API_KEY` as keyof Env;
@@ -263,7 +240,7 @@ export async function getConfigurationForModel(
 }> {
     let providerForcedOverride: AIGatewayProviders | undefined;
     // Check if provider forceful-override is set
-    const match = model.match(/\[(.*?)\]/);
+            const match = model.match(/\[(.*?)\]/);
     if (match) {
         const provider = match[1];
         if (provider === 'openrouter') {
@@ -271,7 +248,7 @@ export async function getConfigurationForModel(
                 baseURL: 'https://openrouter.ai/api/v1',
                 apiKey: env.OPENROUTER_API_KEY,
             };
-        } else if (provider === 'gemini') {
+        } else if (provider === 'gemini' || provider === 'google-ai-studio') {
             return {
                 baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
                 apiKey: env.GOOGLE_AI_STUDIO_API_KEY,
@@ -283,6 +260,14 @@ export async function getConfigurationForModel(
             };
         }
         providerForcedOverride = provider as AIGatewayProviders;
+    }
+
+    // Also check if model name starts with 'gemini' (for models like 'gemini-2.5-pro')
+    if (model.toLowerCase().startsWith('gemini')) {
+        return {
+            baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+            apiKey: env.GOOGLE_AI_STUDIO_API_KEY,
+        };
     }
 
     const baseURL = await buildGatewayUrl(env, providerForcedOverride);
@@ -622,15 +607,11 @@ export async function infer<OutputSchema extends z.AnyZodObject>({
         }
 
         if (!content && !stream && !toolCalls.length) {
-            // // Only error if not streaming and no content
-            // console.error('No content received from OpenAI', JSON.stringify(response, null, 2));
-            // throw new Error('No content received from OpenAI');
             console.warn('No content received from OpenAI', JSON.stringify(response, null, 2));
             return { string: "", toolCalls: [] };
         }
         let executedToolCalls: ToolCallResult[] = [];
         if (tools) {
-            // console.log(`Tool calls:`, JSON.stringify(toolCalls, null, 2), 'definition:', JSON.stringify(tools, null, 2));
             executedToolCalls = await executeToolCalls(toolCalls, tools);
         }
 
