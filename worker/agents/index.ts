@@ -1,4 +1,3 @@
-
 import { SmartCodeGeneratorAgent } from './core/smartGeneratorAgent';
 import { getAgentByName } from 'agents';
 import { CodeGenState } from './core/state';
@@ -75,45 +74,78 @@ export async function getTemplateForQuery(
     inferenceContext: InferenceContext,
     query: string,
     logger: StructuredLogger,
-) : Promise<{sandboxSessionId: string, templateDetails: TemplateDetails, selection: TemplateSelection}> {
-    // Fetch available templates
-    const templatesResponse = await SandboxSdkClient.listTemplates();
-    if (!templatesResponse || !templatesResponse.success) {
-        throw new Error('Failed to fetch templates from sandbox service');
+) : Promise<{sandboxSessionId: string, templateDetails: TemplateDetails | null, selection: TemplateSelection}> {
+    
+    const sandboxSessionId = generateId();
+    
+    // Try to fetch available templates, but don't fail if it doesn't work
+    let templatesResponse;
+    try {
+        templatesResponse = await SandboxSdkClient.listTemplates();
+        if (!templatesResponse || !templatesResponse.success) {
+            logger.warn('Failed to fetch templates from sandbox service, will generate without template');
+            templatesResponse = null;
+        }
+    } catch (error) {
+        logger.warn('Template fetch failed, proceeding without templates', { error });
+        templatesResponse = null;
     }
 
-    const sandboxSessionId = generateId();
-        
+    const availableTemplates = templatesResponse?.templates || [];
+    
     const [analyzeQueryResponse, sandboxClient] = await Promise.all([
-            selectTemplate({
-                env: env,
-                inferenceContext,
-                query,
-                availableTemplates: templatesResponse.templates,
-            }), 
-            getSandboxService(sandboxSessionId)
-        ]);
-        
-        logger.info('Selected template', { selectedTemplate: analyzeQueryResponse });
-            
-        // Find the selected template by name in the available templates
-        if (!analyzeQueryResponse.selectedTemplateName) {
-            logger.error('No suitable template found for code generation');
-            throw new Error('No suitable template found for code generation');
-        }
-            
-        const selectedTemplate = templatesResponse.templates.find(template => template.name === analyzeQueryResponse.selectedTemplateName);
-        if (!selectedTemplate) {
-            logger.error('Selected template not found');
-            throw new Error('Selected template not found');
-        }
-        // Now fetch all the files from the instance
+        selectTemplate({
+            env: env,
+            inferenceContext,
+            query,
+            availableTemplates: availableTemplates,
+        }), 
+        getSandboxService(sandboxSessionId)
+    ]);
+    
+    logger.info('Template selection result', { selectedTemplate: analyzeQueryResponse });
+    
+    // If no template was selected or available, return null templateDetails
+    if (!analyzeQueryResponse.selectedTemplateName || availableTemplates.length === 0) {
+        logger.info('No template selected - will generate from scratch');
+        return { 
+            sandboxSessionId, 
+            templateDetails: null, 
+            selection: analyzeQueryResponse 
+        };
+    }
+    
+    // Try to fetch the selected template
+    const selectedTemplate = availableTemplates.find(template => template.name === analyzeQueryResponse.selectedTemplateName);
+    if (!selectedTemplate) {
+        logger.warn('Selected template not found in available templates, generating from scratch');
+        return { 
+            sandboxSessionId, 
+            templateDetails: null, 
+            selection: analyzeQueryResponse 
+        };
+    }
+    
+    // Fetch template details
+    try {
         const templateDetailsResponse = await sandboxClient.getTemplateDetails(selectedTemplate.name);
         if (!templateDetailsResponse.success || !templateDetailsResponse.templateDetails) {
-            logger.error('Failed to fetch files', { templateDetailsResponse });
-            throw new Error('Failed to fetch files');
+            logger.warn('Failed to fetch template details, generating from scratch');
+            return { 
+                sandboxSessionId, 
+                templateDetails: null, 
+                selection: analyzeQueryResponse 
+            };
         }
-            
+        
         const templateDetails = templateDetailsResponse.templateDetails;
         return { sandboxSessionId, templateDetails, selection: analyzeQueryResponse };
+    } catch (error) {
+        logger.warn('Error fetching template details, generating from scratch', { error });
+        return { 
+            sandboxSessionId, 
+            templateDetails: null, 
+            selection: analyzeQueryResponse 
+        };
+    }
 }
