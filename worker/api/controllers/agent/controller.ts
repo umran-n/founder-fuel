@@ -112,15 +112,21 @@ export class CodingAgentController extends BaseController {
             const websocketUrl = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}/api/agent/${agentId}/ws`;
             const httpStatusUrl = `${url.origin}/api/agent/${agentId}`;
         
+            // Handle null templateDetails - generate from scratch
+            const templateInfo = templateDetails ? {
+                name: templateDetails.name,
+                files: templateDetails.files,
+            } : {
+                name: 'blank',
+                files: [],
+            };
+
             writer.write({
                 message: 'Code generation started',
                 agentId: agentId,
                 websocketUrl,
                 httpStatusUrl,
-                template: {
-                    name: templateDetails.name,
-                    files: templateDetails.files,
-                }
+                template: templateInfo
             });
 
             const agentPromise = agentInstance.initialize({
