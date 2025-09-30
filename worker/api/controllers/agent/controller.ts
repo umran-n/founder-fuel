@@ -21,8 +21,19 @@ const defaultCodeGenArgs: CodeGenArgs = {
     agentMode: 'deterministic',
 };
 
-// Type-safe blank template constant
-const BLANK_TEMPLATE = { name: 'blank', files: [] } as const;
+// Type-safe blank template with all required properties
+const BLANK_TEMPLATE = {
+    name: 'blank',
+    description: {
+        selection: 'Generate from scratch',
+        usage: 'Start with a blank canvas'
+    },
+    files: [],
+    fileTree: { type: 'directory' as const, name: 'root', children: [] },
+    deps: {},
+    dontTouchFiles: [],
+    redactedFiles: []
+};
 
 /**
  * CodingAgentController to handle all code generation related endpoints
@@ -118,7 +129,10 @@ export class CodingAgentController extends BaseController {
             const responseTemplateInfo = templateDetails ? {
                 name: templateDetails.name,
                 files: templateDetails.files,
-            } : BLANK_TEMPLATE;
+            } : {
+                name: BLANK_TEMPLATE.name,
+                files: BLANK_TEMPLATE.files,
+            };
 
             writer.write({
                 message: 'Code generation started',
